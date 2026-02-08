@@ -58,7 +58,7 @@ export default function LoginPage() {
               required
               autoComplete="email"
               className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="jan@company.com"
+              placeholder="email@example.com"
             />
           </div>
 
@@ -93,10 +93,6 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <div className="mt-6 text-xs text-gray-400 text-center">
-          <p>Konta testowe: jan@company.com / anna@company.com</p>
-          <p>Hasło: password123</p>
-        </div>
       </div>
     </div>
   );

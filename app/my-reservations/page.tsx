@@ -17,10 +17,21 @@ interface Reservation {
   };
 }
 
+interface ParkingReservation {
+  id: string;
+  date: string;
+  createdAt: string;
+  spot: {
+    code: string;
+    name: string;
+  };
+}
+
 export default function MyReservationsPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
   const [reservations, setReservations] = useState<Reservation[]>([]);
+  const [parkingReservations, setParkingReservations] = useState<ParkingReservation[]>([]);
   const [loading, setLoading] = useState(true);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
@@ -30,14 +41,18 @@ export default function MyReservationsPage() {
   }, [status, router]);
 
   useEffect(() => {
-    if (status === "authenticated") fetchReservations();
+    if (status === "authenticated") fetchAll();
   }, [status]);
 
-  async function fetchReservations() {
+  async function fetchAll() {
     setLoading(true);
     try {
-      const res = await fetch("/api/reservations/mine");
-      if (res.ok) setReservations(await res.json());
+      const [deskRes, parkingRes] = await Promise.all([
+        fetch("/api/reservations/mine"),
+        fetch("/api/parking/reservations/mine"),
+      ]);
+      if (deskRes.ok) setReservations(await deskRes.json());
+      if (parkingRes.ok) setParkingReservations(await parkingRes.json());
     } finally {
       setLoading(false);
     }
@@ -50,7 +65,24 @@ export default function MyReservationsPage() {
       const res = await fetch(`/api/reservations/${id}`, { method: "DELETE" });
       if (res.ok) {
         setMessage({ type: "success", text: "Rezerwacja anulowana" });
-        fetchReservations();
+        fetchAll();
+      } else {
+        const data = await res.json();
+        setMessage({ type: "error", text: data.error || "Błąd anulowania" });
+      }
+    } finally {
+      setCancellingId(null);
+    }
+  }
+
+  async function handleParkingCancel(id: string) {
+    setCancellingId(id);
+    setMessage(null);
+    try {
+      const res = await fetch(`/api/parking/reservations/${id}`, { method: "DELETE" });
+      if (res.ok) {
+        setMessage({ type: "success", text: "Rezerwacja parkingowa anulowana" });
+        fetchAll();
       } else {
         const data = await res.json();
         setMessage({ type: "error", text: data.error || "Błąd anulowania" });
@@ -69,6 +101,11 @@ export default function MyReservationsPage() {
 
   const upcoming = reservations.filter((r) => !isPast(parseISO(r.date)) || parseISO(r.date) >= today);
   const past = reservations.filter((r) => isPast(parseISO(r.date)) && parseISO(r.date) < today);
+
+  const parkingUpcoming = parkingReservations.filter((r) => !isPast(parseISO(r.date)) || parseISO(r.date) >= today);
+  const parkingPast = parkingReservations.filter((r) => isPast(parseISO(r.date)) && parseISO(r.date) < today);
+
+  const hasAnyReservations = reservations.length > 0 || parkingReservations.length > 0;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -96,7 +133,7 @@ export default function MyReservationsPage() {
 
         {loading ? (
           <div className="text-center text-gray-500 py-8">Ładowanie...</div>
-        ) : reservations.length === 0 ? (
+        ) : !hasAnyReservations ? (
           <div className="text-center text-gray-500 py-8">
             <p>Nie masz żadnych rezerwacji.</p>
             <button
@@ -146,6 +183,54 @@ export default function MyReservationsPage() {
                     <div key={r.id} className="bg-white border border-gray-100 rounded-lg p-4 opacity-60">
                       <div className="font-mono font-bold">{r.desk.code}</div>
                       <div className="text-sm text-gray-500">{r.desk.locationLabel}</div>
+                      <div className="text-sm text-gray-500 mt-1 capitalize">
+                        {format(parseISO(r.date), "EEEE, d MMMM yyyy", { locale: pl })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Parking reservations */}
+            {parkingUpcoming.length > 0 && (
+              <div className="mb-8">
+                <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+                  Parking — nadchodzące
+                </h2>
+                <div className="space-y-3">
+                  {parkingUpcoming.map((r) => (
+                    <div key={r.id} className="bg-white border border-gray-200 rounded-lg p-4 flex items-center justify-between">
+                      <div>
+                        <div className="font-mono font-bold text-lg">P {r.spot.code}</div>
+                        <div className="text-sm text-gray-500">Parking</div>
+                        <div className="text-sm text-gray-700 mt-1 capitalize">
+                          {format(parseISO(r.date), "EEEE, d MMMM yyyy", { locale: pl })}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleParkingCancel(r.id)}
+                        disabled={cancellingId === r.id}
+                        className="text-sm py-1.5 px-4 rounded-lg border border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-50"
+                      >
+                        {cancellingId === r.id ? "..." : "Anuluj"}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {parkingPast.length > 0 && (
+              <div>
+                <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+                  Parking — przeszłe
+                </h2>
+                <div className="space-y-3">
+                  {parkingPast.map((r) => (
+                    <div key={r.id} className="bg-white border border-gray-100 rounded-lg p-4 opacity-60">
+                      <div className="font-mono font-bold">P {r.spot.code}</div>
+                      <div className="text-sm text-gray-500">Parking</div>
                       <div className="text-sm text-gray-500 mt-1 capitalize">
                         {format(parseISO(r.date), "EEEE, d MMMM yyyy", { locale: pl })}
                       </div>

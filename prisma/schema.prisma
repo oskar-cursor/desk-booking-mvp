@@ -14,7 +14,9 @@ model User {
   passwordHash String
   role         Role          @default(USER)
   createdAt    DateTime      @default(now())
-  reservations Reservation[]
+  reservations        Reservation[]
+  presences           Presence[]
+  parkingReservations ParkingReservation[]
 }
 
 model Desk {
@@ -41,7 +43,50 @@ model Reservation {
   @@index([date])
 }
 
+model Presence {
+  id        String       @id @default(cuid())
+  userId    String
+  date      DateTime     @db.Date
+  mode      PresenceMode @default(HOME)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  user      User         @relation(fields: [userId], references: [id])
+
+  @@unique([userId, date])
+  @@index([date])
+}
+
+model ParkingSpot {
+  id           String               @id @default(cuid())
+  code         String               @unique
+  name         String
+  active       Boolean              @default(true)
+  createdAt    DateTime             @default(now())
+  reservations ParkingReservation[]
+}
+
+model ParkingReservation {
+  id        String      @id @default(cuid())
+  userId    String
+  spotId    String
+  date      DateTime    @db.Date
+  createdAt DateTime    @default(now())
+
+  spot ParkingSpot @relation(fields: [spotId], references: [id])
+  user User        @relation(fields: [userId], references: [id])
+
+  @@unique([spotId, date])
+  @@unique([userId, date])
+  @@index([date])
+}
+
 enum Role {
   USER
   ADMIN
+}
+
+enum PresenceMode {
+  HOME
+  OFFICE
 }

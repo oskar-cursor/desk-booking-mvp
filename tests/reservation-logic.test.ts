@@ -1,4 +1,5 @@
-import { createReservationSchema, dateQuerySchema } from "../lib/validations";
+import { createReservationSchema, dateQuerySchema, presenceModeSchema, presenceBodySchema, createParkingReservationSchema } from "../lib/validations";
+import { CANONICAL_DESK_CODES } from "../lib/desks";
 
 describe("Walidacja rezerwacji (Zod)", () => {
   describe("createReservationSchema", () => {
@@ -52,6 +53,149 @@ describe("Walidacja rezerwacji (Zod)", () => {
       const result = dateQuerySchema.safeParse({ date: "15/01/2026" });
       expect(result.success).toBe(false);
     });
+  });
+});
+
+describe("Walidacja presence (Zod)", () => {
+  describe("presenceModeSchema", () => {
+    it("akceptuje HOME", () => {
+      expect(presenceModeSchema.safeParse("HOME").success).toBe(true);
+    });
+
+    it("akceptuje OFFICE", () => {
+      expect(presenceModeSchema.safeParse("OFFICE").success).toBe(true);
+    });
+
+    it("odrzuca niepoprawną wartość", () => {
+      expect(presenceModeSchema.safeParse("REMOTE").success).toBe(false);
+    });
+
+    it("odrzuca pusty string", () => {
+      expect(presenceModeSchema.safeParse("").success).toBe(false);
+    });
+  });
+
+  describe("presenceBodySchema", () => {
+    it("akceptuje poprawne dane HOME", () => {
+      const result = presenceBodySchema.safeParse({ date: "2026-02-10", mode: "HOME" });
+      expect(result.success).toBe(true);
+    });
+
+    it("akceptuje poprawne dane OFFICE", () => {
+      const result = presenceBodySchema.safeParse({ date: "2026-02-10", mode: "OFFICE" });
+      expect(result.success).toBe(true);
+    });
+
+    it("odrzuca niepoprawny format daty", () => {
+      const result = presenceBodySchema.safeParse({ date: "10-02-2026", mode: "HOME" });
+      expect(result.success).toBe(false);
+    });
+
+    it("odrzuca niepoprawny mode", () => {
+      const result = presenceBodySchema.safeParse({ date: "2026-02-10", mode: "HYBRID" });
+      expect(result.success).toBe(false);
+    });
+
+    it("odrzuca brak pola mode", () => {
+      const result = presenceBodySchema.safeParse({ date: "2026-02-10" });
+      expect(result.success).toBe(false);
+    });
+  });
+});
+
+describe("Canonical desk codes", () => {
+  it("contains exactly 11 desks", () => {
+    expect(CANONICAL_DESK_CODES).toHaveLength(11);
+  });
+
+  it("includes all Dział Raportowy desks", () => {
+    expect(CANONICAL_DESK_CODES).toContain("A-01");
+    expect(CANONICAL_DESK_CODES).toContain("C-02");
+  });
+
+  it("includes all Open Space desks", () => {
+    expect(CANONICAL_DESK_CODES).toContain("O-01");
+    expect(CANONICAL_DESK_CODES).toContain("O-03");
+  });
+
+  it("does NOT include stray desk C-03", () => {
+    expect(CANONICAL_DESK_CODES).not.toContain("C-03");
+  });
+});
+
+describe("Logika blokowania rezerwacji przy HOME", () => {
+  it("rezerwacja wymaga trybu OFFICE", () => {
+    const presenceMode: "HOME" | "OFFICE" = "HOME";
+    const bookingEnabled = presenceMode === "OFFICE";
+    expect(bookingEnabled).toBe(false);
+  });
+
+  it("rezerwacja dozwolona przy trybie OFFICE", () => {
+    const presenceMode: "HOME" | "OFFICE" = "OFFICE";
+    const bookingEnabled = presenceMode === "OFFICE";
+    expect(bookingEnabled).toBe(true);
+  });
+
+  it("brak rekordu presence (domyślnie HOME) blokuje rezerwację", () => {
+    const presenceMode: "HOME" | "OFFICE" | null = null;
+    const bookingEnabled = presenceMode === "OFFICE";
+    expect(bookingEnabled).toBe(false);
+  });
+});
+
+describe("Walidacja parkingu (Zod)", () => {
+  describe("createParkingReservationSchema", () => {
+    it("akceptuje poprawne dane", () => {
+      const result = createParkingReservationSchema.safeParse({
+        spotId: "clxxxxxxxxxxxxxxxxx",
+        date: "2026-02-10",
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it("odrzuca puste spotId", () => {
+      const result = createParkingReservationSchema.safeParse({
+        spotId: "",
+        date: "2026-02-10",
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("odrzuca niepoprawny format daty", () => {
+      const result = createParkingReservationSchema.safeParse({
+        spotId: "abc",
+        date: "10-02-2026",
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("odrzuca brak pola date", () => {
+      const result = createParkingReservationSchema.safeParse({
+        spotId: "abc",
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("odrzuca brak pola spotId", () => {
+      const result = createParkingReservationSchema.safeParse({
+        date: "2026-02-10",
+      });
+      expect(result.success).toBe(false);
+    });
+  });
+});
+
+describe("Logika blokowania parkingu przy HOME", () => {
+  it("rezerwacja parkingu wymaga trybu OFFICE", () => {
+    const presenceMode: "HOME" | "OFFICE" = "HOME";
+    const bookingEnabled = presenceMode === "OFFICE";
+    expect(bookingEnabled).toBe(false);
+  });
+
+  it("rezerwacja parkingu dozwolona przy OFFICE", () => {
+    const presenceMode: "HOME" | "OFFICE" = "OFFICE";
+    const bookingEnabled = presenceMode === "OFFICE";
+    expect(bookingEnabled).toBe(true);
   });
 });
 

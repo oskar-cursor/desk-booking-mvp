@@ -13,3 +13,15 @@ export const createReservationSchema = z.object({
 export const dateQuerySchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Data musi być w formacie YYYY-MM-DD"),
 });
+
+export const createParkingReservationSchema = z.object({
+  spotId: z.string().min(1, "ID miejsca parkingowego jest wymagane"),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Data musi być w formacie YYYY-MM-DD"),
+});
+
+export const presenceModeSchema = z.enum(["HOME", "OFFICE"]);
+
+export const presenceBodySchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Data musi być w formacie YYYY-MM-DD"),
+  mode: presenceModeSchema,
+});

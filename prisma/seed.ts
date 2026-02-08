@@ -79,7 +79,30 @@ async function main() {
     });
   }
 
-  console.log(`Desks seeded: ${desks.length} desks`);
+  // Deactivate any non-canonical desks (e.g. stray C-03)
+  const canonicalCodes = desks.map((d) => d.code);
+  const deactivated = await prisma.desk.updateMany({
+    where: { code: { notIn: canonicalCodes } },
+    data: { active: false },
+  });
+
+  console.log(`Desks seeded: ${desks.length} desks, deactivated ${deactivated.count} non-canonical`);
+
+  // --- Parking Spots ---
+  const parkingSpots = [
+    { code: "101", name: "Parking 101" },
+    { code: "202", name: "Parking 202" },
+  ];
+
+  for (const spot of parkingSpots) {
+    await prisma.parkingSpot.upsert({
+      where: { code: spot.code },
+      update: {},
+      create: spot,
+    });
+  }
+
+  console.log(`Parking spots seeded: ${parkingSpots.length}`);
 }
 
 main()

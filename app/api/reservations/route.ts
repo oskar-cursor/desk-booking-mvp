@@ -36,6 +36,17 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Nie można rezerwować w przeszłości" }, { status: 400 });
   }
 
+  // Sprawdź czy użytkownik ma ustawiony tryb OFFICE na ten dzień
+  const presence = await prisma.presence.findUnique({
+    where: { userId_date: { userId: session.user.id, date } },
+  });
+  if (!presence || presence.mode !== "OFFICE") {
+    return NextResponse.json(
+      { error: "Musisz wybrać tryb OFFICE, aby zarezerwować biurko na ten dzień" },
+      { status: 403 }
+    );
+  }
+
   try {
     const reservation = await prisma.reservation.create({
       data: {
