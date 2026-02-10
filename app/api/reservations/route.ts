@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
   });
   if (!presence || presence.mode !== "OFFICE") {
     return NextResponse.json(
-      { error: "Musisz wybrać tryb OFFICE, aby zarezerwować biurko na ten dzień" },
+      { error: "Aby zarezerwować biurko, ustaw tryb pracy na OFFICE na ten dzień" },
       { status: 403 }
     );
   }

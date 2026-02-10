@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
   });
   if (!presence || presence.mode !== "OFFICE") {
     return NextResponse.json(
-      { error: "Aby zarezerwować parking, zaznacz OFFICE na ten dzień" },
+      { error: "Aby zarezerwować parking, ustaw tryb pracy na OFFICE na ten dzień" },
       { status: 403 }
     );
   }

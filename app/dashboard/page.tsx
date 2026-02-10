@@ -9,6 +9,8 @@ import RoomMap from "./room-map";
 import type { RoomLayout } from "./room-map";
 import ParkingGrid from "./parking/parking-grid";
 import { useParking } from "./parking/use-parking";
+import CancelReservationsDialog from "./cancel-reservations-dialog";
+import PeopleList from "./people-list";
 
 interface DeskInfo {
   id: string;
@@ -51,19 +53,28 @@ export default function DashboardPage() {
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [activeRoom, setActiveRoom] = useState(ROOMS[0].id);
 
-  // Presence (HOME/OFFICE)
-  const [presenceMode, setPresenceMode] = useState<"HOME" | "OFFICE">("HOME");
+  // Presence (HOME/OFFICE/ABSENT)
+  const [presenceMode, setPresenceMode] = useState<"HOME" | "OFFICE" | "ABSENT">("HOME");
 
-  // Office people list
-  const [peopleExpanded, setPeopleExpanded] = useState(false);
-  const [officeData, setOfficeData] = useState<{
-    reservedCount: number;
-    capacity: number;
-    people: { deskCode: string; userName: string }[];
+  // People summary
+  const [peopleSummary, setPeopleSummary] = useState<{
+    office: { name: string; deskCode?: string }[];
+    home: { name: string }[];
+    absent: { name: string }[];
+    counts: { total: number; totalDesks: number; office: number; home: number; absent: number };
   } | null>(null);
 
   // Parking (managed by useParking hook)
   const parking = useParking(date, presenceMode, activeRoom === "parking");
+
+  // Cancel reservations dialog state
+  const [cancelDialog, setCancelDialog] = useState<{
+    open: boolean;
+    deskCode: string | null;
+    parkingCode: string | null;
+    targetMode: "HOME" | "ABSENT";
+  } | null>(null);
+  const [cancelLoading, setCancelLoading] = useState(false);
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -87,9 +98,7 @@ export default function DashboardPage() {
     if (status === "authenticated") {
       fetchDesks();
       fetchPresence(date);
-      // Reset people list on date change
-      setPeopleExpanded(false);
-      setOfficeData(null);
+      fetchPeopleSummary();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [date, status]);
@@ -110,7 +119,7 @@ export default function DashboardPage() {
 
   async function handleReserve(deskId: string) {
     if (!bookingEnabled) {
-      setMessage({ type: "error", text: "Wybierz tryb OFFICE, aby zarezerwować biurko na ten dzień" });
+      setMessage({ type: "error", text: "Aby zarezerwować biurko, ustaw tryb pracy na OFFICE na ten dzień" });
       return;
     }
     setActionLoading(deskId);
@@ -125,6 +134,7 @@ export default function DashboardPage() {
       if (res.ok) {
         setMessage({ type: "success", text: `Zarezerwowano ${data.desk.code}!` });
         fetchDesks();
+        fetchPeopleSummary();
       } else {
         setMessage({ type: "error", text: data.error || "Błąd rezerwacji" });
       }
@@ -141,6 +151,7 @@ export default function DashboardPage() {
       if (res.ok) {
         setMessage({ type: "success", text: "Rezerwacja anulowana" });
         fetchDesks();
+        fetchPeopleSummary();
       } else {
         const data = await res.json();
         setMessage({ type: "error", text: data.error || "Błąd anulowania" });
@@ -150,7 +161,7 @@ export default function DashboardPage() {
     }
   }
 
-  async function handlePresenceToggle(mode: "HOME" | "OFFICE") {
+  async function switchPresence(mode: "HOME" | "OFFICE" | "ABSENT") {
     const previous = presenceMode;
     setPresenceMode(mode); // optimistic
     try {
@@ -162,6 +173,8 @@ export default function DashboardPage() {
       if (!res.ok) {
         setPresenceMode(previous);
         setMessage({ type: "error", text: "Nie udało się zapisać trybu pracy" });
+      } else {
+        fetchPeopleSummary();
       }
     } catch {
       setPresenceMode(previous);
@@ -169,22 +182,69 @@ export default function DashboardPage() {
     }
   }
 
-  async function fetchOfficeData() {
+  async function handlePresenceToggle(mode: "HOME" | "OFFICE" | "ABSENT") {
+    // Switching TO OFFICE or not leaving OFFICE → just switch
+    if (mode === "OFFICE" || presenceMode !== "OFFICE") {
+      switchPresence(mode);
+      return;
+    }
+
+    // Switching from OFFICE → HOME or ABSENT: check for reservations first
     try {
-      const res = await fetch(`/api/office?date=${date}`);
-      if (res.ok) {
-        setOfficeData(await res.json());
+      const res = await fetch(`/api/reservations/my-daily?date=${date}`);
+      if (!res.ok) {
+        switchPresence(mode);
+        return;
+      }
+      const data = await res.json();
+      if (data.desk || data.parking) {
+        setCancelDialog({
+          open: true,
+          deskCode: data.desk?.code ?? null,
+          parkingCode: data.parking?.code ?? null,
+          targetMode: mode as "HOME" | "ABSENT",
+        });
+      } else {
+        switchPresence(mode);
       }
     } catch {
-      // keep null
+      switchPresence(mode);
     }
   }
 
-  function handleTogglePeople() {
-    if (!peopleExpanded) {
-      fetchOfficeData();
+  async function handleCancelConfirm() {
+    const targetMode = cancelDialog?.targetMode ?? "HOME";
+    setCancelLoading(true);
+    try {
+      const res = await fetch(`/api/reservations/my-daily?date=${date}`, { method: "DELETE" });
+      if (res.ok) {
+        const data = await res.json();
+        const parts: string[] = [];
+        if (data.deletedDesks?.length) parts.push(`biurko ${data.deletedDesks.join(", ")}`);
+        if (data.deletedParking?.length) parts.push(`parking ${data.deletedParking.join(", ")}`);
+        setMessage({ type: "success", text: `Anulowano: ${parts.join(", ")}` });
+      }
+      await switchPresence(targetMode);
+      fetchDesks();
+      parking.refreshSpots();
+      fetchPeopleSummary();
+    } catch {
+      setMessage({ type: "error", text: "Błąd podczas anulowania rezerwacji" });
+    } finally {
+      setCancelLoading(false);
+      setCancelDialog(null);
     }
-    setPeopleExpanded((prev) => !prev);
+  }
+
+  async function fetchPeopleSummary() {
+    try {
+      const res = await fetch(`/api/presence/summary?date=${date}`);
+      if (res.ok) {
+        setPeopleSummary(await res.json());
+      }
+    } catch {
+      // keep current state
+    }
   }
 
   if (status === "loading") {
@@ -211,6 +271,12 @@ export default function DashboardPage() {
               className="text-sm text-blue-600 hover:underline"
             >
               Moje rezerwacje
+            </button>
+            <button
+              onClick={() => router.push("/schedule")}
+              className="text-sm text-blue-600 hover:underline"
+            >
+              Grafik pracy
             </button>
             <span className="text-sm text-gray-500">{session.user.name}</span>
             <button
@@ -242,31 +308,41 @@ export default function DashboardPage() {
           <span className="text-gray-500 text-sm capitalize">{dateFormatted}</span>
         </div>
 
-        {/* HOME / OFFICE toggle */}
+        {/* HOME / OFFICE / ABSENT toggle */}
         <div className="mb-6">
           <span className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-            Home / Office
+            Home / Office / Absent
           </span>
           <div className="flex gap-1 bg-gray-100 rounded-lg p-1 w-fit">
-            {(["HOME", "OFFICE"] as const).map((mode) => (
-              <button
-                key={mode}
-                onClick={() => handlePresenceToggle(mode)}
-                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                  presenceMode === mode
-                    ? mode === "HOME"
-                      ? "bg-white text-gray-900 shadow-sm"
-                      : "bg-blue-600 text-white shadow-sm"
-                    : "text-gray-500 hover:text-gray-700"
-                }`}
-              >
-                {mode}
-              </button>
-            ))}
+            {(["HOME", "OFFICE", "ABSENT"] as const).map((mode) => {
+              const isActive = presenceMode === mode;
+              let activeClass = "";
+              if (isActive) {
+                if (mode === "HOME") activeClass = "bg-white text-gray-900 shadow-sm";
+                else if (mode === "OFFICE") activeClass = "bg-blue-600 text-white shadow-sm";
+                else activeClass = "bg-orange-500 text-white shadow-sm";
+              }
+              return (
+                <button
+                  key={mode}
+                  onClick={() => handlePresenceToggle(mode)}
+                  className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                    isActive ? activeClass : "text-gray-500 hover:text-gray-700"
+                  }`}
+                >
+                  {mode}
+                </button>
+              );
+            })}
           </div>
-          {!bookingEnabled && (
+          {presenceMode === "HOME" && (
             <p className="mt-2 text-xs text-amber-600">
               Wybierz OFFICE, aby zarezerwować biurko na ten dzień.
+            </p>
+          )}
+          {presenceMode === "ABSENT" && (
+            <p className="mt-2 text-xs text-orange-600">
+              Nieobecność (urlop/choroba) — rezerwacje zablokowane.
             </p>
           )}
         </div>
@@ -326,35 +402,45 @@ export default function DashboardPage() {
           />
         )}
 
-        {/* Collapsible people list */}
-        <div className="mt-8 border-t pt-4">
-          <button
-            onClick={handleTogglePeople}
-            className="text-sm text-blue-600 hover:underline"
-          >
-            {peopleExpanded ? "Zwiń listę osób" : "Rozwiń listę osób"}
-          </button>
-
-          {peopleExpanded && officeData && (
-            <div className="mt-3">
-              <p className="text-sm font-medium text-gray-700 mb-2">
-                Liczba ludzi w biurze: {officeData.reservedCount}/{officeData.capacity}
-              </p>
-              {officeData.people.length === 0 ? (
-                <p className="text-sm text-gray-400">Brak rezerwacji na ten dzień</p>
-              ) : (
-                <ul className="space-y-1">
-                  {officeData.people.map((p) => (
-                    <li key={p.deskCode} className="text-sm text-gray-600">
-                      {p.deskCode}: {p.userName}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          )}
-        </div>
+        {/* People lists */}
+        {peopleSummary && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-8">
+            <PeopleList
+              title="W biurze"
+              count={peopleSummary.counts.office}
+              totalCount={peopleSummary.counts.totalDesks}
+              people={peopleSummary.office.map((p) => ({ name: p.name, detail: p.deskCode }))}
+              icon="🏢"
+              accentColor="text-blue-600"
+            />
+            <PeopleList
+              title="Homeoffice"
+              count={peopleSummary.counts.home}
+              people={peopleSummary.home.map((p) => ({ name: p.name }))}
+              icon="🏠"
+              accentColor="text-green-600"
+            />
+            <PeopleList
+              title="Nieobecni"
+              count={peopleSummary.counts.absent}
+              people={peopleSummary.absent.map((p) => ({ name: p.name }))}
+              icon="❌"
+              accentColor="text-orange-600"
+            />
+          </div>
+        )}
       </div>
+
+      <CancelReservationsDialog
+        open={cancelDialog?.open ?? false}
+        date={date}
+        deskCode={cancelDialog?.deskCode ?? null}
+        parkingCode={cancelDialog?.parkingCode ?? null}
+        targetMode={cancelDialog?.targetMode ?? "HOME"}
+        onConfirm={handleCancelConfirm}
+        onCancel={() => setCancelDialog(null)}
+        isLoading={cancelLoading}
+      />
     </div>
   );
 }

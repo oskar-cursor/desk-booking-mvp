@@ -18,7 +18,7 @@ export interface ParkingMessage {
   text: string;
 }
 
-export function useParking(date: string, presenceMode: "HOME" | "OFFICE", enabled: boolean) {
+export function useParking(date: string, presenceMode: "HOME" | "OFFICE" | "ABSENT", enabled: boolean) {
   const [spots, setSpots] = useState<ParkingSpot[]>([]);
   const [loading, setLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -48,7 +48,7 @@ export function useParking(date: string, presenceMode: "HOME" | "OFFICE", enable
   async function createReservation(spotId: string) {
     // Client-side guard — shows message, but backend is the final authority
     if (presenceMode !== "OFFICE") {
-      setMessage({ type: "error", text: "Aby zarezerwować parking, zaznacz OFFICE na ten dzień" });
+      setMessage({ type: "error", text: "Aby zarezerwować parking, ustaw tryb pracy na OFFICE na ten dzień" });
       return;
     }
 
