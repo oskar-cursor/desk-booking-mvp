@@ -278,6 +278,14 @@ export default function DashboardPage() {
             >
               Grafik pracy
             </button>
+            {(session.user as { role?: string }).role === "ADMIN" && (
+              <button
+                onClick={() => router.push("/admin/desks")}
+                className="text-sm text-blue-600 hover:underline"
+              >
+                Admin
+              </button>
+            )}
             <span className="text-sm text-gray-500">{session.user.name}</span>
             <button
               onClick={async () => {
