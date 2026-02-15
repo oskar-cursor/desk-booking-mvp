@@ -11,6 +11,7 @@ import ParkingGrid from "./parking/parking-grid";
 import { useParking } from "./parking/use-parking";
 import CancelReservationsDialog from "./cancel-reservations-dialog";
 import PeopleList from "./people-list";
+import FavoriteDeskPrompt from "./favorite-desk-prompt";
 
 interface DeskInfo {
   id: string;
@@ -67,6 +68,10 @@ export default function DashboardPage() {
   // Parking (managed by useParking hook)
   const parking = useParking(date, presenceMode, activeRoom === "parking");
 
+  // Favorite desk
+  const [favoriteDeskId, setFavoriteDeskId] = useState<string | null>(null);
+  const [promptDismissedForDate, setPromptDismissedForDate] = useState<string | null>(null);
+
   // Cancel reservations dialog state
   const [cancelDialog, setCancelDialog] = useState<{
     open: boolean;
@@ -94,11 +99,24 @@ export default function DashboardPage() {
     }
   }, []);
 
+  const fetchFavoriteDesk = useCallback(async () => {
+    try {
+      const res = await fetch("/api/user/favorite-desk");
+      if (res.ok) {
+        const data = await res.json();
+        setFavoriteDeskId(data.favoriteDeskId);
+      }
+    } catch {
+      // keep current
+    }
+  }, []);
+
   useEffect(() => {
     if (status === "authenticated") {
       fetchDesks();
       fetchPresence(date);
       fetchPeopleSummary();
+      fetchFavoriteDesk();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [date, status]);
@@ -158,6 +176,26 @@ export default function DashboardPage() {
       }
     } finally {
       setActionLoading(null);
+    }
+  }
+
+  async function handleToggleFavorite(deskId: string) {
+    const newId = deskId === favoriteDeskId ? null : deskId;
+    setFavoriteDeskId(newId); // optimistic
+    try {
+      const res = await fetch("/api/user/favorite-desk", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deskId: newId }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setFavoriteDeskId(data.favoriteDeskId);
+      } else {
+        setFavoriteDeskId(favoriteDeskId); // rollback
+      }
+    } catch {
+      setFavoriteDeskId(favoriteDeskId); // rollback
     }
   }
 
@@ -255,6 +293,7 @@ export default function DashboardPage() {
 
   const dateFormatted = format(new Date(date + "T00:00:00"), "EEEE, d MMMM yyyy", { locale: pl });
   const currentRoom = ROOMS.find((r) => r.id === activeRoom) || ROOMS[0];
+  const hasExistingDeskReservation = desks.some((d) => d.isMine);
 
   // Filter desks for current room
   const roomDesks = desks.filter((d) => getRoomForDesk(d) === currentRoom.label);
@@ -372,6 +411,19 @@ export default function DashboardPage() {
           ))}
         </div>
 
+        {/* Favorite desk prompt */}
+        {promptDismissedForDate !== date && (
+          <FavoriteDeskPrompt
+            date={date}
+            presenceMode={presenceMode}
+            hasExistingReservation={hasExistingDeskReservation}
+            onReserve={async (deskId) => {
+              await handleReserve(deskId);
+            }}
+            onDismiss={() => setPromptDismissedForDate(date)}
+          />
+        )}
+
         {/* Messages */}
         {message && (
           <div
@@ -405,8 +457,10 @@ export default function DashboardPage() {
             layout={currentRoom.layout}
             desks={roomDesks}
             actionLoading={actionLoading}
+            favoriteDeskId={favoriteDeskId}
             onReserve={handleReserve}
             onCancel={handleCancel}
+            onToggleFavorite={handleToggleFavorite}
           />
         )}
 

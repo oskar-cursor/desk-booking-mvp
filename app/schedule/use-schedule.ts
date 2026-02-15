@@ -8,6 +8,19 @@ interface ReservationInfo {
   parkingCode: string | null;
 }
 
+interface BulkReservationResult {
+  created: string[];
+  failed: Array<{ date: string; reason: string }>;
+  skipped: Array<{ date: string; reason: string }>;
+}
+
+interface DeskReservationDialog {
+  open: boolean;
+  deskCode: string;
+  deskId: string;
+  dates: string[];
+}
+
 export function useSchedule() {
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
@@ -26,6 +39,11 @@ export function useSchedule() {
     targetMode: "HOME" | "ABSENT";
   } | null>(null);
   const [cancelLoading, setCancelLoading] = useState(false);
+
+  // Bulk desk reservation dialog
+  const [deskReservationDialog, setDeskReservationDialog] = useState<DeskReservationDialog | null>(null);
+  const [deskReservationLoading, setDeskReservationLoading] = useState(false);
+  const [deskReservationResult, setDeskReservationResult] = useState<BulkReservationResult | null>(null);
 
   const fetchPresence = useCallback(async () => {
     setLoading(true);
@@ -93,6 +111,35 @@ export function useSchedule() {
     setSelectedMode(null);
   }
 
+  async function checkFavoriteDeskAndPrompt(officeDates: string[]) {
+    try {
+      const res = await fetch("/api/user/favorite-desk");
+      if (!res.ok) return;
+      const data = await res.json();
+      if (!data.favoriteDeskId) return;
+
+      // Filter to only future weekday dates
+      const today = new Date().toISOString().slice(0, 10);
+      const futureDates = officeDates.filter((d) => {
+        if (d < today) return false;
+        const date = new Date(d + "T00:00:00.000Z");
+        const day = date.getUTCDay();
+        return day !== 0 && day !== 6;
+      });
+
+      if (futureDates.length === 0) return;
+
+      setDeskReservationDialog({
+        open: true,
+        deskCode: data.favoriteDeskCode,
+        deskId: data.favoriteDeskId,
+        dates: futureDates.sort(),
+      });
+    } catch {
+      // Can't check, skip
+    }
+  }
+
   async function applyBulk() {
     if (selectedDates.size === 0 || !selectedMode) return;
 
@@ -130,19 +177,34 @@ export function useSchedule() {
   }
 
   async function executeBulkUpdate(dates: string[]) {
+    const currentMode = selectedMode;
     setApplying(true);
     setMessage(null);
     try {
       const res = await fetch("/api/presence/bulk", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ dates, mode: selectedMode }),
+        body: JSON.stringify({ dates, mode: currentMode }),
       });
       if (res.ok) {
+        const responseData = await res.json();
         setMessage({ type: "success", text: `Zaktualizowano tryb pracy dla ${dates.length} dni` });
         setSelectedDates(new Set());
         setSelectedMode(null);
         fetchPresence();
+
+        // After setting OFFICE, check for favorite desk
+        if (currentMode === "OFFICE") {
+          // Use the dates that were actually updated
+          const updatedDates = responseData.dates || dates;
+          // Filter to only NEW office dates (not already OFFICE)
+          const newOfficeDates = updatedDates.filter(
+            (d: string) => presenceData[d] !== "OFFICE"
+          );
+          if (newOfficeDates.length > 0) {
+            await checkFavoriteDeskAndPrompt(newOfficeDates);
+          }
+        }
       } else {
         const data = await res.json();
         setMessage({ type: "error", text: data.error || "Błąd aktualizacji" });
@@ -152,6 +214,52 @@ export function useSchedule() {
     } finally {
       setApplying(false);
     }
+  }
+
+  async function handleDeskReservationConfirm() {
+    if (!deskReservationDialog) return;
+    setDeskReservationLoading(true);
+    try {
+      const res = await fetch("/api/reservations/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          deskId: deskReservationDialog.deskId,
+          dates: deskReservationDialog.dates,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setDeskReservationResult(data);
+      } else {
+        setDeskReservationResult({
+          created: [],
+          failed: deskReservationDialog.dates.map((d) => ({
+            date: d,
+            reason: "Błąd serwera",
+          })),
+          skipped: [],
+        });
+      }
+    } catch {
+      setDeskReservationResult({
+        created: [],
+        failed: deskReservationDialog.dates.map((d) => ({
+          date: d,
+          reason: "Błąd sieci",
+        })),
+        skipped: [],
+      });
+    } finally {
+      setDeskReservationLoading(false);
+    }
+  }
+
+  function closeDeskReservationDialog() {
+    setDeskReservationDialog(null);
+    setDeskReservationResult(null);
+    setDeskReservationLoading(false);
+    fetchPresence();
   }
 
   async function handleCancelConfirm() {
@@ -212,5 +320,11 @@ export function useSchedule() {
     cancelLoading,
     handleCancelConfirm,
     closeCancelDialog: () => setCancelDialog(null),
+    // Desk reservation dialog
+    deskReservationDialog,
+    deskReservationLoading,
+    deskReservationResult,
+    handleDeskReservationConfirm,
+    closeDeskReservationDialog,
   };
 }

@@ -8,13 +8,15 @@ datasource db {
 }
 
 model User {
-  id           String        @id @default(cuid())
-  name         String
-  email        String        @unique
-  passwordHash String
-  role         Role          @default(USER)
-  active       Boolean       @default(true)
-  createdAt    DateTime      @default(now())
+  id             String        @id @default(cuid())
+  name           String
+  email          String        @unique
+  passwordHash   String
+  role           Role          @default(USER)
+  active         Boolean       @default(true)
+  favoriteDeskId String?
+  favoriteDesk   Desk?         @relation("FavoriteDesk", fields: [favoriteDeskId], references: [id], onDelete: SetNull)
+  createdAt      DateTime      @default(now())
   reservations        Reservation[]
   presences           Presence[]
   parkingReservations ParkingReservation[]
@@ -28,6 +30,7 @@ model Desk {
   active        Boolean       @default(true)
   createdAt     DateTime      @default(now())
   reservations  Reservation[]
+  favoritedBy   User[]        @relation("FavoriteDesk")
 }
 
 model Reservation {

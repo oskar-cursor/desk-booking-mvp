@@ -22,8 +22,10 @@ interface RoomMapProps {
   layout: RoomLayout;
   desks: DeskInfo[];
   actionLoading: string | null;
+  favoriteDeskId: string | null;
   onReserve: (deskId: string) => void;
   onCancel: (reservationId: string) => void;
+  onToggleFavorite: (deskId: string) => void;
 }
 
 // ---------- Layout configs ----------
@@ -100,14 +102,18 @@ function DeskSVG({
   index,
   isSelected,
   isActionLoading,
+  isFavorite,
   onSelect,
+  onToggleFavorite,
   cfg,
 }: {
   desk: DeskInfo;
   index: number;
   isSelected: boolean;
   isActionLoading: boolean;
+  isFavorite: boolean;
   onSelect: (desk: DeskInfo) => void;
+  onToggleFavorite: (deskId: string) => void;
   cfg: LayoutConfig;
 }) {
   const { x, y, col } = deskPosition(index, cfg);
@@ -148,6 +154,9 @@ function DeskSVG({
     chairFill = "#9CA3AF";
   }
 
+  if (isFavorite) {
+    stroke = "#FBBF24"; // yellow-400
+  }
   if (isSelected) {
     stroke = desk.isMine ? "#2563EB" : "#3B82F6";
   }
@@ -239,6 +248,43 @@ function DeskSVG({
         />
       )}
 
+      {/* Favorite star button */}
+      <g
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggleFavorite(desk.id);
+        }}
+        style={{ cursor: "pointer" }}
+        role="button"
+        aria-label={isFavorite ? "Usuń z ulubionych" : "Ustaw jako ulubione"}
+      >
+        <title>{isFavorite ? "Usuń z ulubionych" : "Ustaw jako ulubione"}</title>
+        <text
+          x={x + cfg.deskW - 14}
+          y={y + 14}
+          fontSize={12}
+          textAnchor="middle"
+        >
+          {isFavorite ? "\u2B50" : "\u2606"}
+        </text>
+      </g>
+
+      {/* Favorite golden ring */}
+      {isFavorite && !isSelected && (
+        <rect
+          x={x - 1}
+          y={y - 1}
+          width={cfg.deskW + 2}
+          height={cfg.deskH + 2}
+          rx={9}
+          ry={9}
+          fill="none"
+          stroke="#FBBF24"
+          strokeWidth={2}
+          pointerEvents="none"
+        />
+      )}
+
       {/* Tooltip for occupied desks */}
       {desk.isReserved && !desk.isMine && (
         <title>{`Zarezerwowane przez: ${desk.reservedBy}`}</title>
@@ -254,8 +300,10 @@ export default function RoomMap({
   layout,
   desks,
   actionLoading,
+  favoriteDeskId,
   onReserve,
   onCancel,
+  onToggleFavorite,
 }: RoomMapProps) {
   const [selectedDesk, setSelectedDesk] = useState<DeskInfo | null>(null);
   const cfg = LAYOUTS[layout];
@@ -390,7 +438,9 @@ export default function RoomMap({
                 actionLoading === desk.id ||
                 actionLoading === desk.reservationId
               }
+              isFavorite={desk.id === favoriteDeskId}
               onSelect={handleSelect}
+              onToggleFavorite={onToggleFavorite}
               cfg={cfg}
             />
           ))}
@@ -410,6 +460,10 @@ export default function RoomMap({
         <div className="flex items-center gap-2">
           <span className="inline-block w-4 h-4 rounded border border-gray-300 bg-gray-100" />
           Zajęte
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="inline-block w-4 h-4 rounded border-2 border-yellow-400 bg-white" />
+          Ulubione
         </div>
       </div>
 
