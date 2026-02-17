@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import MonthlyCalendar from "./monthly-calendar";
 import BulkCancelDialog from "./bulk-cancel-dialog";
+import BulkDeskReservationDialog from "./bulk-desk-reservation-dialog";
 import { useSchedule } from "./use-schedule";
 
 const MONTH_NAMES = [
@@ -165,6 +166,17 @@ export default function SchedulePage() {
         onConfirm={schedule.handleCancelConfirm}
         onCancel={schedule.closeCancelDialog}
         isLoading={schedule.cancelLoading}
+      />
+
+      <BulkDeskReservationDialog
+        open={schedule.deskReservationDialog?.open ?? false}
+        deskCode={schedule.deskReservationDialog?.deskCode ?? ""}
+        deskId={schedule.deskReservationDialog?.deskId ?? ""}
+        dates={schedule.deskReservationDialog?.dates ?? []}
+        onConfirm={schedule.handleDeskReservationConfirm}
+        onDismiss={schedule.closeDeskReservationDialog}
+        isLoading={schedule.deskReservationLoading}
+        result={schedule.deskReservationResult}
       />
     </div>
   );
