@@ -62,6 +62,7 @@ export default function ParkingSpotCard({ spot, isLoading, onReserve, onCancel }
       >
         <span className={`text-6xl font-black select-none ${pColor}`}>P</span>
         <span className={`text-lg font-bold mt-1 ${textColor}`}>{spot.code}</span>
+        {spot.name && <span className="text-sm text-gray-500 leading-tight">{spot.name}</span>}
         <span className={`text-xs mt-1 ${textColor}`}>{statusText}</span>
       </div>
     );
@@ -83,6 +84,7 @@ export default function ParkingSpotCard({ spot, isLoading, onReserve, onCancel }
     >
       <span className={`text-6xl font-black select-none pointer-events-none ${pColor}`}>P</span>
       <span className={`text-lg font-bold mt-1 pointer-events-none ${textColor}`}>{spot.code}</span>
+      {spot.name && <span className="text-sm text-gray-500 leading-tight pointer-events-none">{spot.name}</span>}
       <span className={`text-xs mt-1 pointer-events-none ${textColor}`}>{statusText}</span>
       {actionLabel && (
         <span
